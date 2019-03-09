@@ -108,8 +108,7 @@ final class CameraConfigurationManager {
     }
      */
 
-        cwRotationFromDisplayToCamera =
-                (360 + cwRotationFromNaturalToCamera - cwRotationFromNaturalToDisplay) % 360;
+        cwRotationFromDisplayToCamera = (360 + cwRotationFromNaturalToCamera - cwRotationFromNaturalToDisplay) % 360;
         Log.i(TAG, "Final display orientation: " + cwRotationFromDisplayToCamera);
         if (camera.getFacing() == CameraFacing.FRONT) {
             Log.i(TAG, "Compensating rotation for front camera");
@@ -123,6 +122,7 @@ final class CameraConfigurationManager {
         display.getSize(theScreenResolution);
         screenResolution = theScreenResolution;
         Log.i(TAG, "Screen resolution in current orientation: " + screenResolution);
+
         cameraResolution = CameraConfigurationUtils.findBestPreviewSizeValue(parameters, screenResolution);
         Log.i(TAG, "Camera resolution: " + cameraResolution);
         bestPreviewSize = CameraConfigurationUtils.findBestPreviewSizeValue(parameters, screenResolution);
@@ -156,6 +156,12 @@ final class CameraConfigurationManager {
         }
 
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+
+        if(parameters.isZoomSupported()){
+            parameters.setZoom(parameters.getMaxZoom() / 10);
+        }
+
+        theCamera.setParameters(parameters);
 
         initializeTorch(parameters, prefs, safeMode);
 

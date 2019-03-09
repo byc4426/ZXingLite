@@ -19,33 +19,36 @@ package com.king.zxing;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
+import android.graphics.Rect;
+import android.graphics.RectF;
+import android.hardware.Camera;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
-import android.preference.PreferenceManager;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.widget.Toast;
 
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.DecodeHintType;
 import com.google.zxing.Result;
-import com.google.zxing.ResultMetadataType;
 import com.king.zxing.camera.CameraManager;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
-import java.util.EnumSet;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -62,16 +65,18 @@ public class CaptureActivity extends Activity implements SurfaceHolder.Callback 
 
     private static final String TAG = CaptureActivity.class.getSimpleName();
 
-    private static final long DEFAULT_INTENT_RESULT_DURATION_MS = 1500L;
-    private static final long BULK_MODE_SCAN_DELAY_MS = 1000L;
+//    private static final long DEFAULT_INTENT_RESULT_DURATION_MS = 1500L;
+//    private static final long BULK_MODE_SCAN_DELAY_MS = 1000L;
+
+    private static final int DEVIATION = 6;
 
     private static final String[] ZXING_URLS = { "http://zxing.appspot.com/scan", "zxing://scan/" };
 
-    private static final Collection<ResultMetadataType> DISPLAYABLE_METADATA_TYPES =
-            EnumSet.of(ResultMetadataType.ISSUE_NUMBER,
-                    ResultMetadataType.SUGGESTED_PRICE,
-                    ResultMetadataType.ERROR_CORRECTION_LEVEL,
-                    ResultMetadataType.POSSIBLE_COUNTRY);
+//    private static final Collection<ResultMetadataType> DISPLAYABLE_METADATA_TYPES =
+//            EnumSet.of(ResultMetadataType.ISSUE_NUMBER,
+//                    ResultMetadataType.SUGGESTED_PRICE,
+//                    ResultMetadataType.ERROR_CORRECTION_LEVEL,
+//                    ResultMetadataType.POSSIBLE_COUNTRY);
 
     private CameraManager cameraManager;
     private CaptureActivityHandler handler;
@@ -92,6 +97,12 @@ public class CaptureActivity extends Activity implements SurfaceHolder.Callback 
     private InactivityTimer inactivityTimer;
     private BeepManager beepManager;
     private AmbientLightManager ambientLightManager;
+
+    /**
+     * 是否支持缩放（变焦），默认支持
+     */
+    private boolean isZoom = true;
+    private float oldDistance;
 
     public ViewfinderView getViewfinderView() {
         return viewfinderView;
@@ -157,6 +168,7 @@ public class CaptureActivity extends Activity implements SurfaceHolder.Callback 
         // want to open the camera driver and measure the screen size if we're going to show the help on
         // first launch. That led to bugs where the scanning rectangle was the wrong size and partially
         // off screen.
+
         cameraManager = new CameraManager(getApplication());
         viewfinderView = findViewById(getViewFinderViewId());
         viewfinderView.setCameraManager(cameraManager);
@@ -166,14 +178,6 @@ public class CaptureActivity extends Activity implements SurfaceHolder.Callback 
 
         handler = null;
         lastResult = null;
-
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
-
-        if (prefs.getBoolean(Preferences.KEY_DISABLE_AUTO_ORIENTATION, true)) {
-            setRequestedOrientation(getCurrentOrientation());
-        } else {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
-        }
 
         resetStatusView();
 
@@ -265,26 +269,26 @@ public class CaptureActivity extends Activity implements SurfaceHolder.Callback 
         }
     }
 
-    private int getCurrentOrientation() {
-        int rotation = getWindowManager().getDefaultDisplay().getRotation();
-        if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
-            switch (rotation) {
-                case Surface.ROTATION_0:
-                case Surface.ROTATION_90:
-                    return ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
-                default:
-                    return ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE;
-            }
-        } else {
-            switch (rotation) {
-                case Surface.ROTATION_0:
-                case Surface.ROTATION_270:
-                    return ActivityInfo.SCREEN_ORIENTATION_PORTRAIT;
-                default:
-                    return ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT;
-            }
-        }
-    }
+//    private int getCurrentOrientation() {
+//        int rotation = getWindowManager().getDefaultDisplay().getRotation();
+//        if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
+//            switch (rotation) {
+//                case Surface.ROTATION_0:
+//                case Surface.ROTATION_90:
+//                    return ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
+//                default:
+//                    return ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE;
+//            }
+//        } else {
+//            switch (rotation) {
+//                case Surface.ROTATION_0:
+//                case Surface.ROTATION_270:
+//                    return ActivityInfo.SCREEN_ORIENTATION_PORTRAIT;
+//                default:
+//                    return ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT;
+//            }
+//        }
+//    }
 
     private static boolean isZXingURL(String dataString) {
         if (dataString == null) {
@@ -435,6 +439,50 @@ public class CaptureActivity extends Activity implements SurfaceHolder.Callback 
     }
 
     /**
+     * 重新启动扫码和解码器
+     */
+    public void restartPreviewAndDecode(){
+        if(handler!=null){
+            handler.restartPreviewAndDecode();
+        }
+    }
+
+    /**
+     * 接收扫码结果，想支持连扫时，可将{@link #isContinuousScan()}返回为{@code true}并重写此方法
+     * 如果{@link #isContinuousScan()}支持连扫，则默认重启扫码和解码器；当连扫逻辑太复杂时，
+     * 请将{@link #isAutoRestartPreviewAndDecode()}返回为{@code false}，并手动调用{@link #restartPreviewAndDecode()}
+     * @param result 扫码结果
+     */
+    public void onResult(Result result){
+        if(isContinuousScan()){
+            if(isAutoRestartPreviewAndDecode()){
+                restartPreviewAndDecode();
+            }
+        }else{
+            Intent intent = new Intent();
+            intent.putExtra(KEY_RESULT,result.getText());
+            setResult(RESULT_OK,intent);
+            finish();
+        }
+    }
+
+    /**
+     * 是否连续扫码，如果想支持连续扫码，则将此方法返回{@code true}并重写{@link #onResult(Result)}
+     * @return 默认返回 false
+     */
+    public boolean isContinuousScan(){
+        return false;
+    }
+
+    /**
+     * 是否自动重启扫码和解码器，当支持连扫时才起作用。
+     * @return 默认返回 true
+     */
+    public boolean isAutoRestartPreviewAndDecode(){
+        return true;
+    }
+
+    /**
      * A valid barcode has been found, so give an indication of success and show the results.
      *
      * @param rawResult The contents of the barcode.
@@ -447,11 +495,9 @@ public class CaptureActivity extends Activity implements SurfaceHolder.Callback 
         if(isBeepSoundAndVibrate()){
             beepManager.playBeepSoundAndVibrate();
         }
-        String resultString = rawResult.getText();
-        Intent intent = new Intent();
-        intent.putExtra(KEY_RESULT,resultString);
-        setResult(RESULT_OK,intent);
-        finish();
+
+        onResult(rawResult);
+
 
 
 //        ResultHandler resultHandler = ResultHandlerFactory.makeResultHandler(this, rawResult);
@@ -713,17 +759,17 @@ public class CaptureActivity extends Activity implements SurfaceHolder.Callback 
 //            ClipboardInterface.setText(resultHandler.getDisplayContents(), this);
 //        }
 //    }
-
-    private void sendReplyMessage(int id, Object arg, long delayMS) {
-        if (handler != null) {
-            Message message = Message.obtain(handler, id, arg);
-            if (delayMS > 0L) {
-                handler.sendMessageDelayed(message, delayMS);
-            } else {
-                handler.sendMessage(message);
-            }
-        }
-    }
+//
+//    private void sendReplyMessage(int id, Object arg, long delayMS) {
+//        if (handler != null) {
+//            Message message = Message.obtain(handler, id, arg);
+//            if (delayMS > 0L) {
+//                handler.sendMessageDelayed(message, delayMS);
+//            } else {
+//                handler.sendMessage(message);
+//            }
+//        }
+//    }
 
     private void initCamera(SurfaceHolder surfaceHolder) {
         if (surfaceHolder == null) {
@@ -778,4 +824,153 @@ public class CaptureActivity extends Activity implements SurfaceHolder.Callback 
     public void drawViewfinder() {
         viewfinderView.drawViewfinder();
     }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        if(isZoom && cameraManager.isOpen()){
+            Camera camera = cameraManager.getOpenCamera().getCamera();
+            if(camera ==null){
+                return super.onTouchEvent(event);
+            }
+            if (event.getPointerCount() == 1) {//单点触控，聚焦
+//                focusOnTouch(event,camera);
+            } else {
+                switch (event.getAction() & MotionEvent.ACTION_MASK) {//多点触控
+                    case MotionEvent.ACTION_POINTER_DOWN:
+                        oldDistance = calcFingerSpacing(event);
+                        break;
+                    case MotionEvent.ACTION_MOVE:
+                        float newDistance = calcFingerSpacing(event);
+
+                        if (newDistance > oldDistance + DEVIATION) {//
+                            handleZoom(true, camera);
+                        } else if (newDistance < oldDistance - DEVIATION) {
+                            handleZoom(false, camera);
+                        }
+                        oldDistance = newDistance;
+                        break;
+                }
+            }
+        }
+        return super.onTouchEvent(event);
+    }
+
+    public boolean isZoom() {
+        return isZoom;
+    }
+
+    public void setZoom(boolean zoom) {
+        isZoom = zoom;
+    }
+
+    /**
+     * 处理变焦缩放
+     * @param isZoomIn
+     * @param camera
+     */
+    private void handleZoom(boolean isZoomIn, Camera camera) {
+        Camera.Parameters params = camera.getParameters();
+        if (params.isZoomSupported()) {
+            int maxZoom = params.getMaxZoom();
+            int zoom = params.getZoom();
+            if (isZoomIn && zoom < maxZoom) {
+                zoom++;
+            } else if (zoom > 0) {
+                zoom--;
+            }
+            params.setZoom(zoom);
+            camera.setParameters(params);
+        } else {
+            Log.i(TAG, "zoom not supported");
+        }
+    }
+
+    /**
+     * 聚焦
+     * @param event
+     * @param camera
+     */
+    public void focusOnTouch(MotionEvent event,Camera camera) {
+
+        Camera.Parameters params = camera.getParameters();
+        Camera.Size previewSize = params.getPreviewSize();
+
+        Rect focusRect = calcTapArea(event.getRawX(), event.getRawY(), 1f,previewSize);
+        Rect meteringRect = calcTapArea(event.getRawX(), event.getRawY(), 1.5f,previewSize);
+        Camera.Parameters parameters = camera.getParameters();
+        if (parameters.getMaxNumFocusAreas() > 0) {
+            List<Camera.Area> focusAreas = new ArrayList<>();
+            focusAreas.add(new Camera.Area(focusRect, 600));
+            parameters.setFocusAreas(focusAreas);
+        }
+
+        if (parameters.getMaxNumMeteringAreas() > 0) {
+            List<Camera.Area> meteringAreas = new ArrayList<>();
+            meteringAreas.add(new Camera.Area(meteringRect, 600));
+            parameters.setMeteringAreas(meteringAreas);
+        }
+        final String currentFocusMode = params.getFocusMode();
+        params.setFocusMode(Camera.Parameters.FOCUS_MODE_MACRO);
+        camera.setParameters(params);
+
+        camera.autoFocus(new Camera.AutoFocusCallback() {
+            @Override
+            public void onAutoFocus(boolean success, Camera camera) {
+                Camera.Parameters params = camera.getParameters();
+                params.setFocusMode(currentFocusMode);
+                camera.setParameters(params);
+            }
+        });
+
+    }
+
+    /**
+     * 计算两指间距离
+     * @param event
+     * @return
+     */
+    private float calcFingerSpacing(MotionEvent event) {
+        float x = event.getX(0) - event.getX(1);
+        float y = event.getY(0) - event.getY(1);
+        return (float) Math.sqrt(x * x + y * y);
+    }
+
+    /**
+     * 计算对焦区域
+     * @param x
+     * @param y
+     * @param coefficient
+     * @param previewSize
+     * @return
+     */
+    private Rect calcTapArea(float x, float y, float coefficient,Camera.Size previewSize) {
+        float focusAreaSize = 200;
+        int areaSize = Float.valueOf(focusAreaSize * coefficient).intValue();
+        int centerX = (int) ((x / previewSize.width) * 2000 - 1000);
+        int centerY = (int) ((y / previewSize.height) * 2000 - 1000);
+        int left = clamp(centerX - (areaSize / 2), -1000, 1000);
+        int top = clamp(centerY - (areaSize / 2), -1000, 1000);
+        RectF rectF = new RectF(left, top, left + areaSize, top + areaSize);
+        return new Rect(Math.round(rectF.left), Math.round(rectF.top),
+                Math.round(rectF.right), Math.round(rectF.bottom));
+    }
+
+    /**
+     *
+     * @param x
+     * @param min
+     * @param max
+     * @return
+     */
+    private int clamp(int x, int min, int max) {
+        if (x > max) {
+            return max;
+        }
+        if (x < min) {
+            return min;
+        }
+        return x;
+    }
+
+
 }

@@ -9,7 +9,8 @@
 [![License](https://img.shields.io/badge/license-Apche%202.0-blue.svg)](http://www.apache.org/licenses/LICENSE-2.0)
 [![Blog](https://img.shields.io/badge/blog-Jenly-9933CC.svg)](http://blog.csdn.net/jenly121)
 
-ZXingLite for Android 是ZXing的精简版，优化扫码和生成二维码功能，扫码界面支持完全自定义，让集成更简单。
+ZXingLite for Android 是ZXing的精简版，基于ZXing库优化扫码和生成二维码/条形码功能，扫码界面完全支持自定义，也可一行代码使用默认实现的扫码功能。总之你想要的都在这里。
+>简单如斯，你不试试？ Come on~
 
 ## Gif 展示
 ![Image](GIF.gif)
@@ -23,11 +24,14 @@ ZXingLite for Android 是ZXing的精简版，优化扫码和生成二维码功�
 | cornerColor | color |<font color=#1FB3E2>#FF1FB3E2</font>| 扫描区边角的颜色 |
 | laserColor | color |<font color=#1FB3E2>#FF1FB3E2</font>| 扫描区激光线的颜色 |
 | resultPointColor | color |<font color=#EFBD21>#C0EFBD21</font>| 扫描区结果点的颜色 |
-| text | string || 扫描提示文本信息 |
-| textColor | color |<font color=#C0C0C0>#FFC0C0C0</font>| 提示文本字体颜色 |
-| textSize | dimension |14sp| 提示文本字体大小 |
-| textPadding | dimension |24dp| 提示文本距离扫描区的间距 |
-| textLocation | enum |top| 提示文本信息显示的位置 |
+| labelText | string |  | 扫描提示文本信息 |
+| labelTextColor | color |<font color=#C0C0C0>#FFC0C0C0</font>| 提示文本字体颜色 |
+| labelTextSize | dimension |14sp| 提示文本字体大小 |
+| labelTextPadding | dimension |24dp| 提示文本距离扫描区的间距 |
+| showResultPoint | boolean | false | 是否显示合适的扫码结果点 |
+| frameWidth | dimension |  | 扫码框宽度，需与frameHeight同时使用才有效 |
+| frameHeight | dimension |  | 扫码框高度，需与frameWidth同时使用才有效 |
+
 
 ## 引入
 
@@ -36,17 +40,17 @@ ZXingLite for Android 是ZXing的精简版，优化扫码和生成二维码功�
 <dependency>
   <groupId>com.king.zxing</groupId>
   <artifactId>zxing-lite</artifactId>
-  <version>1.0.0</version>
+  <version>1.0.6</version>
   <type>pom</type>
 </dependency>
 ```
 ### Gradle:
 ```gradle
-implementation 'com.king.zxing:zxing-lite:1.0.0'
+implementation 'com.king.zxing:zxing-lite:1.0.6'
 ```
 ### Lvy:
 ```lvy
-<dependency org='com.king.zxing' name='zxing-lite' rev='1.0.0'>
+<dependency org='com.king.zxing' name='zxing-lite' rev='1.0.6'>
   <artifact name='$AID' ext='pom'></artifact>
 </dependency>
 ```
@@ -63,7 +67,7 @@ allprojects {
 ## 引入的库：
 ```gradle
 compileOnly 'com.android.support:appcompat-v7:27.1.1'
-api 'com.com.google.zxing:core:3.3.3'
+api 'com.google.zxing:core:3.3.3'
 ```
 
 ## 示例
@@ -84,6 +88,9 @@ api 'com.com.google.zxing:core:3.3.3'
 
 代码示例 （二维码/条形码）
 ```Java
+    //跳转的默认扫码界面
+    startActivityForResult(new Intent(context,CaptureActivity.class),requestCode);
+
     //生成二维码
     CodeUtils.createQRCode(content,600,logo);
     //生成条形码
@@ -91,6 +98,31 @@ api 'com.com.google.zxing:core:3.3.3'
 ```
 
 更多使用详情，请查看[app](app)中的源码使用示例
+
+## 版本记录
+#### v1.0.6：2019-1-16
+*  支持连续扫码
+*  支持横屏扫码(主要为了支持Pad)
+
+#### v1.0.5：2018-12-29
+*  支持自定义扫码框宽高
+
+#### v1.0.4：2018-12-19
+*  修改text相关自定义属性，如：text->labelText
+
+#### v1.0.3：2018-11-20
+*  支持触摸缩放变焦
+
+#### v1.0.2：2018-9-12
+*  支持条形码下方显示显示code
+*  优化相机预览尺寸遍历策略，从而降低预览变形的可能性
+
+#### v1.0.1：2018-8-23
+*  优化扫码识别速度
+
+#### v1.0.0：2018-8-9
+*  ZXingLite初始版本
+
 
 ## 关于我
    Name: <a title="关于作者" href="https://about.me/jenly1314" target="_blank">Jenly</a>

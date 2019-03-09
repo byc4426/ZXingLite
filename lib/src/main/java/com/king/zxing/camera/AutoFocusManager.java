@@ -22,6 +22,7 @@ import android.os.AsyncTask;
 import android.preference.PreferenceManager;
 import android.util.Log;
 
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.concurrent.RejectedExecutionException;
@@ -33,7 +34,7 @@ final class AutoFocusManager implements Camera.AutoFocusCallback {
 
     private static final String TAG = AutoFocusManager.class.getSimpleName();
 
-    private static final long AUTO_FOCUS_INTERVAL_MS = 1000L;
+    private static final long AUTO_FOCUS_INTERVAL_MS = 1200L;
     private static final Collection<String> FOCUS_MODES_CALLING_AF;
     static {
         FOCUS_MODES_CALLING_AF = new ArrayList<>(2);
@@ -66,7 +67,7 @@ final class AutoFocusManager implements Camera.AutoFocusCallback {
 
     private synchronized void autoFocusAgainLater() {
         if (!stopped && outstandingTask == null) {
-            AutoFocusTask newTask = new AutoFocusTask();
+            AutoFocusTask newTask = new AutoFocusTask(this);
             try {
                 newTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
                 outstandingTask = newTask;
@@ -116,7 +117,14 @@ final class AutoFocusManager implements Camera.AutoFocusCallback {
         }
     }
 
-    private final class AutoFocusTask extends AsyncTask<Object,Object,Object> {
+    private static class AutoFocusTask extends AsyncTask<Object,Object,Object> {
+
+        private WeakReference<AutoFocusManager> weakReference;
+
+        public AutoFocusTask(AutoFocusManager manager){
+            weakReference = new WeakReference<>(manager);
+        }
+
         @Override
         protected Object doInBackground(Object... voids) {
             try {
@@ -124,7 +132,10 @@ final class AutoFocusManager implements Camera.AutoFocusCallback {
             } catch (InterruptedException e) {
                 // continue
             }
-            start();
+            AutoFocusManager manager = weakReference.get();
+            if(manager!=null){
+                manager.start();
+            }
             return null;
         }
     }
